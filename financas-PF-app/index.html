@@ -1,0 +1,1781 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle Financeiro & Quitação PF</title>
+  <!-- PWA Meta Tags (PF) -->
+  <meta name="theme-color" content="#1e1b4b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finanças PF">
+  <link rel="manifest" href="./manifest.json">
+  <!-- Tailwind CSS & Chart.js via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: 'Inter', system-ui, sans-serif; }
+    .tab-active { border-bottom: 3px solid #6366f1; color: #ffffff; font-weight: 600; }
+    .loader { border: 3px solid #e0e7ff; border-top: 3px solid #4f46e5; border-radius: 50%; width: 22px; height: 22px; animation: spin 0.8s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    button:disabled { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
+  </style>
+</head>
+<body class="text-slate-800 pb-14">
+
+  <!-- TOPBAR -->
+  <header class="bg-indigo-950 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <div class="bg-indigo-600 p-2 rounded-lg"><i class="fa-solid fa-shield-halved text-lg"></i></div>
+        <div>
+          <h1 id="uiNomeTitular" class="font-bold text-lg leading-tight">Controle Financeiro & Quitação PF</h1>
+          <span id="statusConexao" class="text-xs text-indigo-300">Verificando conexão...</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <input type="month" id="filtroMes" class="bg-indigo-900 text-white text-sm rounded-lg px-3 py-2 border border-indigo-700 focus:outline-none focus:border-indigo-400">
+        
+        <button id="btnInstalarPWA" onclick="instalarPWA()" title="Instalar Aplicativo no Dispositivo" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+          <i class="fa-solid fa-download"></i> <span class="hidden sm:inline">Instalar App</span>
+        </button>
+        <button onclick="carregarDados()" title="Sincronizar com a Planilha" class="bg-indigo-900 hover:bg-indigo-800 p-2.5 rounded-lg border border-indigo-700 transition">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+        <button onclick="abrirModalConfig()" title="Configurar API e PIN" class="bg-indigo-900 hover:bg-indigo-800 p-2.5 rounded-lg border border-indigo-700 transition">
+          <i class="fa-solid fa-gear"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- NAVEGAÇÃO DE ABAS (ORDEM: 1-DASH, 2-CARTÕES, 3-CUSTOS FIXOS, 4-DÍVIDAS) -->
+    <div class="max-w-7xl mx-auto px-4 flex gap-6 text-sm bg-indigo-950 border-t border-indigo-900 overflow-x-auto">
+      <button onclick="mudarAba('dash')" id="tab-dash" class="py-3 px-1 tab-active whitespace-nowrap"><i class="fa-solid fa-chart-line mr-1"></i> 1. Dash Principal</button>
+      <button onclick="mudarAba('cartoes')" id="tab-cartoes" class="py-3 px-1 text-indigo-300 hover:text-white whitespace-nowrap"><i class="fa-solid fa-credit-card mr-1"></i> 2. Cartões de Crédito</button>
+      <button onclick="mudarAba('fixos')" id="tab-fixos" class="py-3 px-1 text-indigo-300 hover:text-white whitespace-nowrap"><i class="fa-solid fa-calendar-check mr-1"></i> 3. Custos Fixos & Renda</button>
+      <button onclick="mudarAba('dividas')" id="tab-dividas" class="py-3 px-1 text-indigo-300 hover:text-white whitespace-nowrap"><i class="fa-solid fa-scale-unbalanced mr-1"></i> 4. Mapa de Dívidas & Acordos</button>
+    </div>
+  </header>
+
+  <!-- BARRA DE CARREGAMENTO -->
+  <div id="barraLoading" class="hidden bg-indigo-50 border-b border-indigo-200 px-4 py-2">
+    <div class="max-w-7xl mx-auto flex items-center gap-3 text-sm text-indigo-900 font-medium">
+      <div class="loader"></div>
+      <span id="textoLoading">Sincronizando com o Google Sheets...</span>
+    </div>
+  </div>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="max-w-7xl mx-auto px-4 mt-6">
+
+    <!-- ================= ABA 1: DASH PRINCIPAL ================= -->
+    <section id="sec-dash" class="space-y-6">
+
+      <!-- BLOCO 1: RESUMO FINANCEIRO DO MÊS (SOMA INTEGRADA) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
+            <span>Renda / Entradas Mês</span>
+            <i class="fa-solid fa-arrow-up text-emerald-600"></i>
+          </div>
+          <p id="kpiRendaMes" class="text-xl font-bold text-emerald-600 mt-2">R$ 0,00</p>
+          <p id="kpiRendaRecebida" class="text-xs text-slate-400 mt-1">Recebido: R$ 0,00</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
+            <span>Contas & Fixos Mês</span>
+            <i class="fa-solid fa-house text-rose-500"></i>
+          </div>
+          <p id="kpiFixosMes" class="text-xl font-bold text-rose-600 mt-2">R$ 0,00</p>
+          <p id="kpiFixosPagos" class="text-xs text-slate-400 mt-1">Pago: R$ 0,00</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
+            <span>Faturas Cartões (Mês)</span>
+            <i class="fa-solid fa-credit-card text-purple-600"></i>
+          </div>
+          <p id="kpiCartoesMes" class="text-xl font-bold text-purple-600 mt-2">R$ 0,00</p>
+          <p id="kpiCartoesAbertos" class="text-xs text-slate-400 mt-1">Em aberto: R$ 0,00</p>
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          <div class="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase">
+            <span>Acordos / Dívidas Mês</span>
+            <i class="fa-solid fa-handshake text-amber-600"></i>
+          </div>
+          <p id="kpiAcordosMes" class="text-xl font-bold text-amber-600 mt-2">R$ 0,00</p>
+          <p id="kpiAcordosPagos" class="text-xs text-slate-400 mt-1">Pago no mês: R$ 0,00</p>
+        </div>
+
+        <div class="bg-indigo-900 text-white p-4 rounded-xl shadow-sm">
+          <div class="flex justify-between items-center text-indigo-200 text-xs font-semibold uppercase">
+            <span>Fôlego Livre no Mês</span>
+            <i class="fa-solid fa-scale-balanced text-indigo-300"></i>
+          </div>
+          <p id="kpiFolegoMes" class="text-xl font-bold mt-2">R$ 0,00</p>
+          <p class="text-[11px] text-indigo-300 mt-1">Renda - (Fixos + Cartões + Acordos)</p>
+        </div>
+      </div>
+
+      <!-- BLOCO 2: TERMÔMETRO DE QUITAÇÃO GLOBAL -->
+      <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+          <div>
+            <h2 class="font-bold text-slate-800 text-sm uppercase tracking-wide"><i class="fa-solid fa-fire-flame-curved text-amber-500 mr-1"></i> Termômetro Global de Quitação de Dívidas</h2>
+            <p id="txtResumoPassivo" class="text-xs text-slate-500">Mapeamento de passivos PF e Instituições</p>
+          </div>
+          <div class="text-right">
+            <span id="badgePercentualQuitado" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">0% Quitado</span>
+            <span id="badgeDescontosObtidos" class="px-3 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-700 ml-1">Economia em Acordos: R$ 0,00</span>
+          </div>
+        </div>
+        <div class="w-full bg-slate-200 h-4 rounded-full overflow-hidden">
+          <div id="barraProgressoQuitacao" class="bg-emerald-500 h-4 transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- BLOCO 3: RESUMO DOS CARTÕES DE CRÉDITO NO MÊS -->
+      <div>
+        <div class="flex justify-between items-center mb-3">
+          <h3 class="font-bold text-slate-700 text-sm uppercase tracking-wide"><i class="fa-solid fa-credit-card text-indigo-600 mr-1"></i> Estimativa de Fatura dos Cartões neste Mês</h3>
+          <button onclick="abrirModalCompraCartao()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg font-medium">
+            <i class="fa-solid fa-plus mr-1"></i> Lançar Compra no Cartão
+          </button>
+        </div>
+        <div id="gridResumoCartoesDash" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      </div>
+
+      <!-- BLOCO 4: FLUXO DE CONTAS DO MÊS + ORDEM DE ATAQUE DE DÍVIDAS -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Lançamentos do Mês (2 colunas) -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col">
+          <div class="p-4 border-b border-slate-200 flex flex-wrap justify-between items-center gap-2">
+            <div>
+              <h3 class="font-bold text-slate-800 text-sm">Contas & Rendas do Mês (Caixa PF)</h3>
+              <p class="text-xs text-slate-400">Gere os fixos do mês ou lance entradas/saídas avulsas</p>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="gerarFixosMesAtual(this)" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
+                <i class="fa-solid fa-bolt mr-1"></i> Gerar Fixos Mês
+              </button>
+              <button onclick="abrirModalFluxoMes()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium">
+                <i class="fa-solid fa-plus mr-1"></i> Novo Lançamento
+              </button>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase">
+                  <th class="py-2.5 px-3">Venc.</th>
+                  <th class="py-2.5 px-3">Descrição</th>
+                  <th class="py-2.5 px-3">Valor</th>
+                  <th class="py-2.5 px-3">Status</th>
+                  <th class="py-2.5 px-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="tabelaFluxoMesBody" class="divide-y divide-slate-200"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Ordem de Ataque Recomendada (Avalanche vs Bola de Neve) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3">
+          <div class="flex justify-between items-center border-b pb-2">
+            <div>
+              <h3 class="font-bold text-slate-800 text-sm">Ordem de Ataque (Quitação)</h3>
+              <p class="text-[11px] text-slate-400">Qual dívida quitar primeiro</p>
+            </div>
+            <select id="selectEstrategia" onchange="renderizarOrdemAtaque()" class="text-xs border rounded-lg px-2 py-1 bg-slate-50 font-semibold text-indigo-700">
+              <option value="AVALANCHE">Método Avalanche (Juros)</option>
+              <option value="BOLA_DE_NEVE">Bola de Neve (Menor Saldo)</option>
+            </select>
+          </div>
+          <div id="listaOrdemAtaque" class="space-y-2.5 max-h-80 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= ABA 2: CARTÕES DE CRÉDITO (ATÉ 4 CARTÕES) ================= -->
+    <section id="sec-cartoes" class="hidden space-y-6">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <h2 class="font-bold text-slate-800">Gerenciamento de Cartões (Até 4 Cartões Ativos)</h2>
+          <p class="text-xs text-slate-500">Configure limites, datas de fechamento/vencimento, oculte ou adicione novos cartões.</p>
+        </div>
+        <button onclick="abrirModalNovoCartao()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <i class="fa-solid fa-plus mr-1"></i> Adicionar Novo Cartão
+        </button>
+      </div>
+
+      <!-- Cards Detalhados dos Cartões (Ativos e Inativos) -->
+      <div id="gridCartoesDetalhado" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+      
+      <!-- Barra de Ações e Filtros de Compras do Cartão -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="filtroCartaoId" onchange="renderizarTabelaComprasCartao()" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="TODOS">Todos os Cartões</option>
+          </select>
+          <span class="text-xs text-slate-500">Exibindo itens da fatura do mês selecionado no topo.</span>
+        </div>
+        <button onclick="abrirModalCompraCartao()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <i class="fa-solid fa-cart-plus mr-1"></i> Lançar Compra / Parcelamento / Assinatura
+        </button>
+      </div>
+
+      <!-- Tabela de Compras na Fatura do Mês -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-xs">
+              <th class="py-3 px-4">Data Compra</th>
+              <th class="py-3 px-4">Cartão</th>
+              <th class="py-3 px-4">Descrição da Compra</th>
+              <th class="py-3 px-4">Parcela</th>
+              <th class="py-3 px-4">Tipo</th>
+              <th class="py-3 px-4">Valor na Fatura</th>
+              <th class="py-3 px-4">Status Fatura</th>
+              <th class="py-3 px-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaComprasCartaoBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= ABA 3: CUSTOS FIXOS & RENDA MENSAL ================= -->
+    <section id="sec-fixos" class="hidden space-y-4">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <h2 class="font-bold text-slate-800">Matriz de Rendas e Custos Fixos Mensais (PF)</h2>
+          <p class="text-xs text-slate-500">Cadastre seu salário/rendas e despesas fixas da casa para gerar o orçamento do mês com 1 clique.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="gerarFixosMesAtual(this)" class="bg-amber-500 hover:bg-amber-600 text-white px-3.5 py-2 rounded-lg text-sm font-medium">
+            <i class="fa-solid fa-bolt mr-1"></i> Gerar Fixos + Assinaturas no Mês Atual
+          </button>
+          <button onclick="abrirModalCustoFixo()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium">
+            <i class="fa-solid fa-plus mr-1"></i> Novo Item Fixo
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-xs">
+              <th class="py-3 px-4">Dia Venc.</th>
+              <th class="py-3 px-4">Tipo</th>
+              <th class="py-3 px-4">Descrição</th>
+              <th class="py-3 px-4">Categoria</th>
+              <th class="py-3 px-4">Valor Base</th>
+              <th class="py-3 px-4">Ativo</th>
+              <th class="py-3 px-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaCustosFixosBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= ABA 4: MAPA DE DÍVIDAS & ACORDOS ================= -->
+    <section id="sec-dividas" class="hidden space-y-6">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-3">
+        <div>
+          <h2 class="font-bold text-slate-800">Mapa Geral de Passivos: Pessoas Físicas & Instituições</h2>
+          <p class="text-xs text-slate-500">Dívidas PF têm 0% de juros e amortização livre. Instituições preenchem juros de mercado/SELIC automaticamente quando não informados.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="abrirModalDivida('Pessoa Física')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium">
+            <i class="fa-solid fa-user-check mr-1"></i> + Dívida Pessoa Física (0% Juros)
+          </button>
+          <button onclick="abrirModalDivida('Instituição')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-2 rounded-lg text-sm font-medium">
+            <i class="fa-solid fa-building-columns mr-1"></i> + Dívida Instituição / Acordo
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabela Principal de Dívidas -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-xs">
+              <th class="py-3 px-4">Credor / Tipo</th>
+              <th class="py-3 px-4">Modalidade & Juros</th>
+              <th class="py-3 px-4">Original / Atualizado</th>
+              <th class="py-3 px-4">Acordo / Desconto</th>
+              <th class="py-3 px-4">Pago / Saldo Restante</th>
+              <th class="py-3 px-4">Status</th>
+              <th class="py-3 px-4 text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tabelaDividasBody" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+
+      <!-- Cronograma de Parcelas de Acordos e Histórico de Amortizações -->
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-3">
+        <div class="flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm">Parcelas de Acordos & Histórico de Amortizações</h3>
+            <p class="text-xs text-slate-500">Acompanhe as parcelas de acordos que vencem no mês, edite valores ou estorne pagamentos.</p>
+          </div>
+          <select id="filtroParcelasDivida" onchange="renderizarTabelaPagamentosDividas()" class="border rounded-lg px-3 py-1.5 text-xs bg-slate-50">
+            <option value="MES_ATUAL">Vencendo no Mês Selecionado</option>
+            <option value="TODAS_PENDENTES">Todas as Parcelas Pendentes</option>
+            <option value="HISTORICO_PAGO">Histórico de Pagamentos Realizados</option>
+          </select>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase">
+                <th class="py-2.5 px-3">Data</th>
+                <th class="py-2.5 px-3">Credor / Dívida</th>
+                <th class="py-2.5 px-3">Parcela / Obs</th>
+                <th class="py-2.5 px-3">Valor Previsto</th>
+                <th class="py-2.5 px-3">Valor Pago</th>
+                <th class="py-2.5 px-3">Status</th>
+                <th class="py-2.5 px-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tabelaPagamentosDividasBody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= MODAL 1: CONFIGURAR CARTÃO (SLOTS 1 A 4) ================= -->
+  <div id="modalConfigCartao" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="tituloModalCartao" class="font-bold text-lg">Configurar Cartão de Crédito</h3>
+        <button onclick="fecharModal('modalConfigCartao')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formConfigCartao" onsubmit="salvarConfigCartao(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="cardCfgId">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Nome do Cartão / Banco</label>
+          <input type="text" id="cardCfgNome" required placeholder="Ex: Nubank, Inter, Itaú..." class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Limite Total (R$)</label>
+            <input type="number" step="0.01" id="cardCfgLimite" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Cor do Card</label>
+            <input type="color" id="cardCfgCor" value="#4f46e5" class="w-full h-9 border rounded-lg px-1 py-1">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dia de Fechamento (1-31)</label>
+            <input type="number" min="1" max="31" id="cardCfgFechamento" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dia de Vencimento (1-31)</label>
+            <input type="number" min="1" max="31" id="cardCfgVencimento" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Cartão Ativo?</label>
+          <select id="cardCfgAtivo" class="w-full border rounded-lg px-3 py-2">
+            <option value="Sim">Sim (Exibir no Painel)</option>
+            <option value="Não">Não (Ocultar Slot)</option>
+          </select>
+        </div>
+        <div class="pt-3 border-t flex justify-between items-center gap-2">
+          <button type="button" id="btnExcluirCartaoModal" onclick="excluirCartaoAtual(this)" class="text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-lg text-xs font-semibold">
+            <i class="fa-solid fa-trash mr-1"></i> Excluir Cartão
+          </button>
+          <div class="flex gap-2 ml-auto">
+            <button type="button" onclick="fecharModal('modalConfigCartao')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+            <button type="submit" id="btnSubmitCfgCartao" class="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium">Salvar Cartão</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 2: LANÇAR / EDITAR COMPRA NO CARTÃO ================= -->
+  <div id="modalCompraCartao" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="tituloModalCompraCartao" class="font-bold text-lg">Lançar Compra no Cartão</h3>
+        <button onclick="fecharModal('modalCompraCartao')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formCompraCartao" onsubmit="salvarCompraCartao(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="cmpIdCompra" value="">
+        <input type="hidden" id="cmpIdGrupo" value="">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Selecionar Cartão</label>
+            <select id="cmpIdCartao" required class="w-full border rounded-lg px-3 py-2"></select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Data da Compra</label>
+            <input type="date" id="cmpData" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição da Compra</label>
+          <input type="text" id="cmpDescricao" required placeholder="Ex: Farmácia, Pneu, Mercado, Netflix..." class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label id="lblValorCompraCartao" class="block text-xs font-semibold text-slate-600 mb-1">Valor Total da Compra (R$)</label>
+            <input type="number" step="0.01" id="cmpValorTotal" required placeholder="0.00" class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Nº de Parcelas</label>
+            <input type="number" min="1" max="48" id="cmpParcelas" value="1" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+            <input type="text" id="cmpCategoria" value="Geral" class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">É Assinatura Recorrente?</label>
+            <select id="cmpAssinatura" class="w-full border rounded-lg px-3 py-2">
+              <option value="Não">Não (Compra Normal)</option>
+              <option value="Sim">Sim (Cobra Todo Mês)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="blocoModoEdicaoCompra" class="hidden bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-xs space-y-1">
+          <label class="flex items-center gap-2 font-semibold text-amber-900 cursor-pointer">
+            <input type="checkbox" id="cmpRecalcularGrupo" checked onchange="alternarLabelEdicaoCompra()" class="rounded text-indigo-600">
+            <span>Recalcular todas as parcelas desta compra</span>
+          </label>
+          <p class="text-[11px] text-amber-700">Desmarque se quiser alterar apenas o valor ou descrição da parcela deste mês.</p>
+        </div>
+
+        <p class="text-xs text-slate-500 bg-indigo-50 p-2.5 rounded-lg border border-indigo-100">
+          <i class="fa-solid fa-wand-magic-sparkles text-indigo-600 mr-1"></i>
+          O sistema verifica o <strong>Dia de Fechamento</strong> do cartão e distribui as parcelas automaticamente nas faturas certas.
+        </p>
+        <div class="pt-3 border-t flex justify-end gap-2">
+          <button type="button" onclick="fecharModal('modalCompraCartao')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+          <button type="submit" id="btnSubmitCompraCartao" class="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium">Lançar na Fatura</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 3: CADASTRAR / EDITAR DÍVIDA (PF OU INSTITUIÇÃO) ================= -->
+  <div id="modalDivida" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-xl max-w-xl w-full p-6 shadow-xl space-y-4 my-8">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="tituloModalDivida" class="font-bold text-lg">Cadastrar Dívida / Acordo</h3>
+        <button onclick="fecharModal('modalDivida')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formDivida" onsubmit="salvarDivida(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="divId">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Tipo de Credor</label>
+            <select id="divTipoCredor" onchange="ajustarCamposTipoCredor()" required class="w-full border rounded-lg px-3 py-2 font-medium">
+              <option value="Pessoa Física">Pessoa Física (0% Juros / Livre)</option>
+              <option value="Instituição">Instituição (Banco / Empresa / Órgão)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Nome do Credor</label>
+            <input type="text" id="divCredor" required placeholder="Ex: João, Banco Itaú, Serasa..." class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição da Dívida</label>
+            <input type="text" id="divDescricao" required placeholder="Ex: Empréstimo, Cartão antigo, Reforma..." class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Data de Origem</label>
+            <input type="date" id="divDataInicio" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+
+        <div id="blocoJurosInstituicao" class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Modalidade Financeira</label>
+            <select id="divModalidade" onchange="preencherSugestaoJuros()" class="w-full border rounded-lg px-2.5 py-2 bg-white">
+              <option value="Empréstimo Pessoal / Carnê / Boleto">Empréstimo Pessoal / Boleto (4,5% a.m.)</option>
+              <option value="Cartão de Crédito (Rotativo/Atraso)">Cartão Rotativo / Atraso (14,0% a.m.)</option>
+              <option value="Cheque Especial">Cheque Especial (8,0% a.m.)</option>
+              <option value="Consignado / Financiamento">Consignado / Financiamento (1,8% a.m.)</option>
+              <option value="Impostos / Taxas Públicas (SELIC)">Impostos / Taxas SELIC (0,90% a.m.)</option>
+              <option value="Outros (SELIC Padrão)">Outros - SELIC Padrão (0,90% a.m.)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Juros ao Mês (%) <span class="text-indigo-600 font-normal">(Vazio = Auto)</span></label>
+            <input type="number" step="0.01" id="divTaxaJuros" placeholder="Auto (SELIC/Mercado)" class="w-full border rounded-lg px-3 py-2 bg-white">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor Original da Dívida (R$)</label>
+            <input type="number" step="0.01" id="divValorOriginal" required placeholder="0.00" class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor Atualizado Cobrado Hoje (R$)</label>
+            <input type="number" step="0.01" id="divValorAtualizado" placeholder="Deixe vazio p/ calcular auto" class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+
+        <div class="border-t pt-3 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Está em Acordo Fechado (Parcelas Fixas)?</label>
+              <select id="divEmAcordo" onchange="ajustarCamposAcordo()" class="w-full border rounded-lg px-3 py-2 font-medium">
+                <option value="Não">Não (Amortização Livre ou Em Aberto)</option>
+                <option value="Sim">Sim (Acordo Fechado com Parcelas)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Prioridade Manual</label>
+              <select id="divPrioridade" class="w-full border rounded-lg px-3 py-2">
+                <option value="Alta">Alta</option>
+                <option value="Média" selected>Média</option>
+                <option value="Baixa">Baixa</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="blocoDetalhesAcordo" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+            <div>
+              <label class="block text-[11px] font-semibold text-indigo-900 mb-1">Valor Final Acordo</label>
+              <input type="number" step="0.01" id="divValorAcordo" placeholder="R$" class="w-full border rounded px-2 py-1.5 bg-white">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-indigo-900 mb-1">Qtd. Parcelas</label>
+              <input type="number" min="1" max="120" id="divQtdParcelas" value="1" class="w-full border rounded px-2 py-1.5 bg-white">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-indigo-900 mb-1">Dia Vencimento</label>
+              <input type="number" min="1" max="31" id="divDiaVencAcordo" value="10" class="w-full border rounded px-2 py-1.5 bg-white">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-indigo-900 mb-1">1ª Parcela (Mês)</label>
+              <input type="month" id="divMesInicioAcordo" class="w-full border rounded px-2 py-1.5 bg-white">
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Observações / Condições Combinadas</label>
+          <input type="text" id="divObservacoes" placeholder="Ex: Pagar conforme sobrar caixa, chave PIX do credor..." class="w-full border rounded-lg px-3 py-2">
+        </div>
+
+        <div class="pt-3 border-t flex justify-end gap-2">
+          <button type="button" onclick="fecharModal('modalDivida')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+          <button type="submit" id="btnSubmitDivida" class="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium">Salvar Dívida</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 4: AMORTIZAR / EDITAR PAGAMENTO DE DÍVIDA ================= -->
+  <div id="modalAmortizar" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <div>
+          <h3 id="tituloModalAmortizar" class="font-bold text-lg">Registrar Pagamento / Amortização</h3>
+          <p id="amortSubtitulo" class="text-xs text-slate-500"></p>
+        </div>
+        <button onclick="fecharModal('modalAmortizar')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formAmortizar" onsubmit="salvarAmortizacao(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="amortIdDivida">
+        <input type="hidden" id="amortIdPagto">
+        <input type="hidden" id="amortSaldoAtual">
+        <input type="hidden" id="amortModoEdicao" value="NAO">
+
+        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border">
+          <div>
+            <span class="block text-xs text-slate-500">Saldo Base Antes</span>
+            <strong id="amortUiSaldoAtual" class="text-base text-slate-800">R$ 0,00</strong>
+          </div>
+          <div class="border-l pl-3">
+            <span class="block text-xs text-slate-500">Saldo Após Este Pagto</span>
+            <strong id="amortUiNovoSaldo" class="text-base text-emerald-600">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor Pago (R$)</label>
+            <input type="number" step="0.01" id="amortValorPago" oninput="atualizarPreviewAmortizacao()" required class="w-full border rounded-lg px-3 py-2 font-bold text-emerald-700">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Data do Pagamento</label>
+            <input type="date" id="amortDataPagto" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Observação do Pagamento</label>
+          <input type="text" id="amortObs" placeholder="Ex: Abatimento parcial via PIX, Quitação parcela..." class="w-full border rounded-lg px-3 py-2">
+        </div>
+
+        <div class="pt-3 border-t flex justify-end gap-2">
+          <button type="button" onclick="fecharModal('modalAmortizar')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+          <button type="submit" id="btnSubmitAmort" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium">Confirmar Abatimento</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 5: CUSTO FIXO / RENDA FIXA ================= -->
+  <div id="modalCustoFixo" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="tituloModalFixo" class="font-bold text-lg">Item Fixo Mensal (PF)</h3>
+        <button onclick="fecharModal('modalCustoFixo')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formCustoFixo" onsubmit="salvarCustoFixo(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="fixoId">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Tipo</label>
+            <select id="fixoTipo" required class="w-full border rounded-lg px-3 py-2">
+              <option value="Saída">Saída (Despesa Fixa)</option>
+              <option value="Entrada">Entrada (Renda Fixa)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor Base (R$)</label>
+            <input type="number" step="0.01" id="fixoValor" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
+          <input type="text" id="fixoDescricao" required placeholder="Ex: Salário, Energia, Internet..." class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+            <input type="text" id="fixoCategoria" value="Moradia" class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Dia (1-31)</label>
+            <input type="number" min="1" max="31" id="fixoDia" value="10" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Ativo?</label>
+            <select id="fixoAtivo" class="w-full border rounded-lg px-3 py-2">
+              <option value="Sim">Sim</option>
+              <option value="Não">Não</option>
+            </select>
+          </div>
+        </div>
+        <div class="pt-3 border-t flex justify-end gap-2">
+          <button type="button" onclick="fecharModal('modalCustoFixo')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+          <button type="submit" id="btnSubmitFixo" class="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 6: LANÇAMENTO AVULSO NO MÊS ================= -->
+  <div id="modalFluxoMes" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 id="tituloModalFluxo" class="font-bold text-lg">Lançamento no Mês</h3>
+        <button onclick="fecharModal('modalFluxoMes')" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+      </div>
+      <form id="formFluxoMes" onsubmit="salvarFluxoMes(event)" class="space-y-3 text-sm">
+        <input type="hidden" id="flxId">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Tipo</label>
+            <select id="flxTipo" required class="w-full border rounded-lg px-3 py-2">
+              <option value="Entrada">Entrada (Renda Extra / Salário)</option>
+              <option value="Saída">Saída (Conta / Gasto)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Valor (R$)</label>
+            <input type="number" step="0.01" id="flxValor" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Descrição</label>
+          <input type="text" id="flxDescricao" required class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Vencimento</label>
+            <input type="date" id="flxVencimento" required class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Categoria</label>
+            <input type="text" id="flxCategoria" value="Geral" class="w-full border rounded-lg px-3 py-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Status</label>
+            <select id="flxStatus" class="w-full border rounded-lg px-3 py-2">
+              <option value="Pendente">Pendente</option>
+              <option value="Pago">Pago</option>
+            </select>
+          </div>
+        </div>
+        <div class="pt-3 border-t flex justify-end gap-2">
+          <button type="button" onclick="fecharModal('modalFluxoMes')" class="px-4 py-2 rounded-lg border text-slate-600">Cancelar</button>
+          <button type="submit" id="btnSubmitFlx" class="px-5 py-2 rounded-lg bg-indigo-600 text-white font-medium">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MODAL 7: CONFIGURAÇÃO WHITE-LABEL (API + PIN PF) ================= -->
+  <div id="modalConfig" class="hidden fixed inset-0 bg-slate-900/75 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6 shadow-xl space-y-4">
+      <div class="flex items-center gap-2 border-b pb-3">
+        <i class="fa-solid fa-link text-indigo-600 text-lg"></i>
+        <h3 class="font-bold text-lg">Conexão com Google Sheets (PF)</h3>
+      </div>
+      <p class="text-xs text-slate-500">Credenciais salvas exclusivamente no seu navegador (`localStorage`), separadas do sistema PJ.</p>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">URL do Web App PF (Google Apps Script)</label>
+          <input type="url" id="cfgUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full border rounded-lg px-3 py-2">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">Token / PIN de Segurança (Aba Config)</label>
+          <input type="password" id="cfgToken" placeholder="Ex: 123456" class="w-full border rounded-lg px-3 py-2">
+        </div>
+      </div>
+      <div class="pt-3 border-t flex justify-end gap-2">
+        <button onclick="fecharModal('modalConfig')" class="px-4 py-2 rounded-lg border text-slate-600">Fechar</button>
+        <button onclick="salvarConfig()" class="px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium">Salvar e Conectar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= LÓGICA JAVASCRIPT ================= -->
+  <script>
+    const STORAGE_KEY_URL = 'fin_pf_api_url';
+    const STORAGE_KEY_TOKEN = 'fin_pf_api_token';
+
+    let estado = {
+      config: [],
+      fluxo_mes: [],
+      custos_fixos: [],
+      cartoes_config: [],
+      cartoes_lancamentos: [],
+      dividas: [],
+      dividas_pagamentos: [],
+      taxas_padrao: {}
+    };
+
+    let emProcessamento = false;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const hoje = new Date();
+      const mesAtual = hoje.toISOString().slice(0, 7);
+      const dataHoje = hoje.toISOString().slice(0, 10);
+
+      document.getElementById('filtroMes').value = mesAtual;
+      document.getElementById('cmpData').value = dataHoje;
+      document.getElementById('divDataInicio').value = dataHoje;
+      document.getElementById('divMesInicioAcordo').value = mesAtual;
+      document.getElementById('flxVencimento').value = dataHoje;
+
+      document.getElementById('filtroMes').addEventListener('change', atualizarTudoUI);
+
+      const url = localStorage.getItem(STORAGE_KEY_URL);
+      const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+
+      if (!url || !token) {
+        abrirModalConfig();
+      } else {
+        carregarDados();
+      }
+    });
+
+    function definirEstadoBotao(btn, bloqueado, textoCarregando = 'Salvando...') {
+      if (!btn) return;
+      if (bloqueado) {
+        btn.dataset.textoOriginal = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-1"></i> ${textoCarregando}`;
+      } else {
+        btn.disabled = false;
+        if (btn.dataset.textoOriginal) btn.innerHTML = btn.dataset.textoOriginal;
+      }
+    }
+
+    function mudarAba(aba) {
+      ['dash', 'cartoes', 'fixos', 'dividas'].forEach(item => {
+        document.getElementById(`sec-${item}`).classList.add('hidden');
+        document.getElementById(`tab-${item}`).classList.remove('tab-active');
+        document.getElementById(`tab-${item}`).classList.add('text-indigo-300');
+      });
+      document.getElementById(`sec-${aba}`).classList.remove('hidden');
+      document.getElementById(`tab-${aba}`).classList.add('tab-active');
+      document.getElementById(`tab-${aba}`).classList.remove('text-indigo-300');
+    }
+
+    function abrirModalConfig() {
+      document.getElementById('cfgUrl').value = localStorage.getItem(STORAGE_KEY_URL) || '';
+      document.getElementById('cfgToken').value = localStorage.getItem(STORAGE_KEY_TOKEN) || '';
+      document.getElementById('modalConfig').classList.remove('hidden');
+    }
+
+    function salvarConfig() {
+      const url = document.getElementById('cfgUrl').value.trim();
+      const token = document.getElementById('cfgToken').value.trim();
+      if (!url || !token) return alert('Informe a URL do Web App e o PIN.');
+      localStorage.setItem(STORAGE_KEY_URL, url);
+      localStorage.setItem(STORAGE_KEY_TOKEN, token);
+      fecharModal('modalConfig');
+      carregarDados();
+    }
+
+    function fecharModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function mostrarLoading(mostrar, texto = 'Sincronizando...') {
+      const el = document.getElementById('barraLoading');
+      document.getElementById('textoLoading').innerText = texto;
+      mostrar ? el.classList.remove('hidden') : el.classList.add('hidden');
+    }
+
+    function formatarMoeda(v) {
+      return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    async function carregarDados() {
+      const url = localStorage.getItem(STORAGE_KEY_URL);
+      const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+      if (!url || !token) return abrirModalConfig();
+
+      mostrarLoading(true, 'Sincronizando dados PF...');
+      try {
+        const res = await fetch(`${url}?token=${encodeURIComponent(token)}`);
+        const json = await res.json();
+
+        if (json.status !== 'sucesso') {
+          document.getElementById('statusConexao').innerText = 'Erro: ' + json.mensagem;
+          alert('Erro: ' + json.mensagem);
+          return;
+        }
+
+        estado.config = json.config || [];
+        estado.fluxo_mes = json.fluxo_mes || [];
+        estado.custos_fixos = json.custos_fixos || [];
+        estado.cartoes_config = json.cartoes_config || [];
+        estado.cartoes_lancamentos = json.cartoes_lancamentos || [];
+        estado.dividas = json.dividas || [];
+        estado.dividas_pagamentos = json.dividas_pagamentos || [];
+        estado.taxas_padrao = json.taxas_padrao || {};
+
+        const cfgTitular = estado.config.find(c => c.Chave === 'NOME_TITULAR');
+        if (cfgTitular && cfgTitular.Valor) document.getElementById('uiNomeTitular').innerText = cfgTitular.Valor;
+
+        document.getElementById('statusConexao').innerText = 'Conectado e sincronizado';
+        popularSelectCartoes();
+        atualizarTudoUI();
+      } catch (e) {
+        document.getElementById('statusConexao').innerText = 'Falha de conexão';
+        alert('Erro de conexão com o Google Apps Script.');
+      } finally {
+        mostrarLoading(false);
+      }
+    }
+
+    async function enviarPost(payload, btnEl = null, textoBtn = 'Salvando...') {
+      if (emProcessamento) return false;
+      const url = localStorage.getItem(STORAGE_KEY_URL);
+      const token = localStorage.getItem(STORAGE_KEY_TOKEN);
+      payload.token = token;
+
+      emProcessamento = true;
+      definirEstadoBotao(btnEl, true, textoBtn);
+      mostrarLoading(true, 'Gravando na planilha...');
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.status !== 'sucesso') {
+          alert('Atenção: ' + json.mensagem);
+          return false;
+        }
+        await carregarDados();
+        return true;
+      } catch (e) {
+        alert('Falha ao gravar: ' + e.message);
+        return false;
+      } finally {
+        emProcessamento = false;
+        definirEstadoBotao(btnEl, false);
+        mostrarLoading(false);
+      }
+    }
+
+    // ATUALIZAÇÃO CENTRAL DE TODAS AS ABAS
+    function atualizarTudoUI() {
+      const mesFiltro = document.getElementById('filtroMes').value;
+
+      const fluxoDoMes = estado.fluxo_mes.filter(f => String(f.Mes_Ano || f.Data_Vencimento).startsWith(mesFiltro));
+      let rendaTotal = 0, rendaRecebida = 0, fixosTotal = 0, fixosPagos = 0;
+
+      fluxoDoMes.forEach(f => {
+        const val = Number(f.Valor) || 0;
+        const pago = f.Status === 'Pago';
+        if (f.Tipo === 'Entrada') {
+          rendaTotal += val;
+          if (pago) rendaRecebida += val;
+        } else {
+          fixosTotal += val;
+          if (pago) fixosPagos += val;
+        }
+      });
+
+      const comprasMes = estado.cartoes_lancamentos.filter(c => c.Mes_Fatura === mesFiltro);
+      let faturaTotalMes = 0, faturaAbertaMes = 0;
+      comprasMes.forEach(c => {
+        const v = Number(c.Valor_Parcela) || 0;
+        faturaTotalMes += v;
+        if (c.Status_Fatura !== 'Paga') faturaAbertaMes += v;
+      });
+
+      const pagtosDivMes = estado.dividas_pagamentos.filter(p => String(p.Data_Vencimento || p.Data_Pagamento).startsWith(mesFiltro));
+      let acordosTotalMes = 0, acordosPagosMes = 0;
+      pagtosDivMes.forEach(p => {
+        const vPrev = Number(p.Valor_Previsto) || 0;
+        const vPago = Number(p.Valor_Pago) || 0;
+        if (p.Status === 'Pago') {
+          acordosTotalMes += vPago;
+          acordosPagosMes += vPago;
+        } else {
+          acordosTotalMes += vPrev;
+        }
+      });
+
+      const folegoLivre = rendaTotal - (fixosTotal + faturaTotalMes + acordosTotalMes);
+
+      document.getElementById('kpiRendaMes').innerText = formatarMoeda(rendaTotal);
+      document.getElementById('kpiRendaRecebida').innerText = `Recebido: ${formatarMoeda(rendaRecebida)}`;
+      document.getElementById('kpiFixosMes').innerText = formatarMoeda(fixosTotal);
+      document.getElementById('kpiFixosPagos').innerText = `Pago: ${formatarMoeda(fixosPagos)}`;
+      document.getElementById('kpiCartoesMes').innerText = formatarMoeda(faturaTotalMes);
+      document.getElementById('kpiCartoesAbertos').innerText = `Em aberto: ${formatarMoeda(faturaAbertaMes)}`;
+      document.getElementById('kpiAcordosMes').innerText = formatarMoeda(acordosTotalMes);
+      document.getElementById('kpiAcordosPagos').innerText = `Pago no mês: ${formatarMoeda(acordosPagosMes)}`;
+      document.getElementById('kpiFolegoMes').innerText = formatarMoeda(folegoLivre);
+
+      let passivoBaseTotal = 0, totalJaPago = 0, totalSaldoRestante = 0, totalDescontos = 0;
+      estado.dividas.forEach(d => {
+        const emAcordo = d.Em_Acordo === 'Sim';
+        const base = emAcordo ? (Number(d.Valor_Acordo) || 0) : (Number(d.Valor_Atualizado) || 0);
+        passivoBaseTotal += base;
+        totalJaPago += (Number(d.Valor_Pago_Total) || 0);
+        totalSaldoRestante += (Number(d.Saldo_Restante) || 0);
+        totalDescontos += (Number(d.Desconto_Obtido) || 0);
+      });
+
+      const percQuitado = passivoBaseTotal > 0 ? Math.min(100, Math.round((totalJaPago / passivoBaseTotal) * 100)) : 0;
+      document.getElementById('barraProgressoQuitacao').style.width = `${percQuitado}%`;
+      document.getElementById('badgePercentualQuitado').innerText = `${percQuitado}% Quitado (${formatarMoeda(totalJaPago)} de ${formatarMoeda(passivoBaseTotal)})`;
+      document.getElementById('badgeDescontosObtidos').innerText = `Descontos em Acordos: ${formatarMoeda(totalDescontos)}`;
+      document.getElementById('txtResumoPassivo').innerText = `Falta quitar: ${formatarMoeda(totalSaldoRestante)} em ${estado.dividas.filter(d => d.Status !== 'Quitada').length} dívida(s) ativa(s).`;
+
+      renderizarCardsCartoes(mesFiltro);
+      renderizarTabelaFluxoMes(fluxoDoMes);
+      renderizarOrdemAtaque();
+      renderizarTabelaComprasCartao();
+      renderizarTabelaCustosFixos();
+      renderizarTabelaDividas();
+      renderizarTabelaPagamentosDividas();
+    }
+
+    // RENDERIZAR OS CARTÕES (NO DASH APENAS ATIVOS; NA ABA CARTÕES TODOS + OPÇÃO DE REATIVAR)
+    function renderizarCardsCartoes(mesFiltro) {
+      const todosCartoes = estado.cartoes_config || [];
+      const ativos = todosCartoes.filter(c => String(c.Ativo).toLowerCase() === 'sim');
+      const dashContainer = document.getElementById('gridResumoCartoesDash');
+      const abaContainer = document.getElementById('gridCartoesDetalhado');
+
+      const gerarHtmlCard = (c) => {
+        const isAtivo = String(c.Ativo).toLowerCase() === 'sim';
+        const lancsCartaoMes = estado.cartoes_lancamentos.filter(l => l.ID_Cartao === c.ID_Cartao && l.Mes_Fatura === mesFiltro);
+        const faturaMes = lancsCartaoMes.reduce((acc, l) => acc + (Number(l.Valor_Parcela) || 0), 0);
+        const todasAbertas = estado.cartoes_lancamentos.filter(l => l.ID_Cartao === c.ID_Cartao && l.Status_Fatura !== 'Paga');
+        const limiteTomado = todasAbertas.reduce((acc, l) => acc + (Number(l.Valor_Parcela) || 0), 0);
+        const limiteTotal = Number(c.Limite_Total) || 1;
+        const disponivel = Math.max(0, limiteTotal - limiteTomado);
+        const percUso = Math.min(100, Math.round((limiteTomado / limiteTotal) * 100));
+        const faturaPaga = lancsCartaoMes.length > 0 && lancsCartaoMes.every(l => l.Status_Fatura === 'Paga');
+
+        if (!isAtivo) {
+          return `
+            <div class="bg-slate-100 rounded-xl border-2 border-dashed border-slate-300 p-4 flex flex-col justify-between opacity-75">
+              <div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-600 uppercase">Desativado / Oculto</span>
+                <h4 class="font-bold text-slate-700 text-sm mt-2">${c.Nome_Cartao}</h4>
+                <p class="text-xs text-slate-500 mt-1">Limite: ${formatarMoeda(c.Limite_Total)}</p>
+              </div>
+              <div class="pt-4 mt-4 border-t border-slate-200 flex justify-between items-center">
+                <button onclick="abrirModalConfigCartao('${c.ID_Cartao}')" class="text-xs font-semibold text-indigo-600 hover:underline">
+                  <i class="fa-solid fa-rotate-left mr-1"></i> Reativar / Editar
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col justify-between">
+            <div class="p-4 text-white flex justify-between items-center" style="background-color: ${c.Cor_Hex || '#4f46e5'}">
+              <div>
+                <h4 class="font-bold text-sm">${c.Nome_Cartao}</h4>
+                <p class="text-[11px] opacity-90">Fecha dia ${c.Dia_Fechamento} • Vence dia ${c.Dia_Vencimento}</p>
+              </div>
+              <button onclick="abrirModalConfigCartao('${c.ID_Cartao}')" title="Configurar ou Excluir Cartão" class="text-white/80 hover:text-white p-1">
+                <i class="fa-solid fa-sliders"></i>
+              </button>
+            </div>
+            <div class="p-4 space-y-2 text-xs">
+              <div class="flex justify-between items-baseline">
+                <span class="text-slate-500">Fatura (${mesFiltro}):</span>
+                <strong class="text-base text-slate-800">${formatarMoeda(faturaMes)}</strong>
+              </div>
+              <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                <div class="bg-indigo-600 h-2" style="width: ${percUso}%"></div>
+              </div>
+              <div class="flex justify-between text-[11px] text-slate-500">
+                <span>Usado: ${formatarMoeda(limiteTomado)}</span>
+                <span>Livre: ${formatarMoeda(disponivel)}</span>
+              </div>
+              <div class="pt-2 border-t flex justify-between items-center">
+                <span class="px-2 py-0.5 rounded font-semibold ${faturaPaga ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
+                  ${faturaPaga ? 'Fatura Paga' : (faturaMes > 0 ? 'Fatura Aberta' : 'Sem Gastos')}
+                </span>
+                ${faturaMes > 0 && !faturaPaga ? `<button onclick="pagarFatura('${c.ID_Cartao}', '${mesFiltro}', this)" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded font-medium"><i class="fa-solid fa-check mr-1"></i>Pagar Fatura</button>` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      };
+
+      dashContainer.innerHTML = ativos.length
+        ? ativos.map(gerarHtmlCard).join('')
+        : `<div class="col-span-4 bg-white p-4 rounded-xl border text-center text-xs text-slate-400">Nenhum cartão ativo. Vá na aba "2. Cartões de Crédito" para adicionar ou reativar.</div>`;
+
+      abaContainer.innerHTML = todosCartoes.length
+        ? todosCartoes.map(gerarHtmlCard).join('')
+        : `<div class="col-span-4 bg-white p-6 rounded-xl border text-center text-xs text-slate-400">Nenhum cartão cadastrado. Clique em "Adicionar Novo Cartão" acima.</div>`;
+    }
+
+    // TABELA FLUXO DO MÊS (NO DASH)
+    function renderizarTabelaFluxoMes(lista) {
+      const tbody = document.getElementById('tabelaFluxoMesBody');
+      if (!lista.length) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-6 text-center text-slate-400">Nenhum lançamento no mês. Clique em "Gerar Fixos Mês".</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = lista.map(f => {
+        const pago = f.Status === 'Pago';
+        const cor = f.Tipo === 'Entrada' ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold';
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3 whitespace-nowrap">${f.Data_Vencimento || '-'}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">${f.Descricao} <span class="text-slate-400 font-normal">(${f.Categoria})</span></td>
+            <td class="py-2.5 px-3 whitespace-nowrap ${cor}">${formatarMoeda(f.Valor)}</td>
+            <td class="py-2.5 px-3">
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${pago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${f.Status}</span>
+            </td>
+            <td class="py-2.5 px-3 text-right whitespace-nowrap space-x-1">
+              ${!pago ? `<button onclick="baixarFluxo('${f.ID}', this)" class="bg-emerald-600 text-white px-2 py-0.5 rounded text-[11px]">Baixar</button>` : ''}
+              <button onclick="abrirModalEdicaoFluxo('${f.ID}')" class="text-blue-600 px-1"><i class="fa-solid fa-pen"></i></button>
+              <button onclick="excluirFluxo('${f.ID}', this)" class="text-slate-400 hover:text-rose-600 px-1"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ORDEM DE ATAQUE (AVALANCHE VS BOLA DE NEVE)
+    function renderizarOrdemAtaque() {
+      const estrategia = document.getElementById('selectEstrategia').value;
+      const ativas = estado.dividas.filter(d => d.Status !== 'Quitada' && Number(d.Saldo_Restante) > 0);
+      const container = document.getElementById('listaOrdemAtaque');
+
+      if (!ativas.length) {
+        container.innerHTML = `<p class="text-xs text-slate-400 text-center py-6">Nenhuma dívida ativa cadastrada.</p>`;
+        return;
+      }
+
+      ativas.sort((a, b) => {
+        if (estrategia === 'AVALANCHE') {
+          return (Number(b.Taxa_Juros_Mes) || 0) - (Number(a.Taxa_Juros_Mes) || 0);
+        } else {
+          return (Number(a.Saldo_Restante) || 0) - (Number(b.Saldo_Restante) || 0);
+        }
+      });
+
+      container.innerHTML = ativas.map((d, idx) => `
+        <div class="p-3 rounded-lg border ${idx === 0 ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} flex justify-between items-center">
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${idx === 0 ? 'bg-amber-500 text-white' : 'bg-slate-200 text-slate-700'}">${idx + 1}º Alvo</span>
+              <strong class="text-xs text-slate-800">${d.Credor}</strong>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-0.5">${d.Descricao} • Juros: <strong>${Number(d.Taxa_Juros_Mes).toFixed(2)}% a.m.</strong></p>
+          </div>
+          <div class="text-right">
+            <strong class="text-xs text-rose-600 block">${formatarMoeda(d.Saldo_Restante)}</strong>
+            <button onclick="abrirModalAmortizar('${d.ID_Divida}')" class="text-[11px] text-indigo-600 font-semibold hover:underline">Amortizar</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ABA 2: COMPRAS DO CARTÃO
+    function popularSelectCartoes() {
+      const selCompra = document.getElementById('cmpIdCartao');
+      const selFiltro = document.getElementById('filtroCartaoId');
+      const ativos = estado.cartoes_config.filter(c => String(c.Ativo).toLowerCase() === 'sim');
+
+      selCompra.innerHTML = ativos.map(c => `<option value="${c.ID_Cartao}">${c.Nome_Cartao}</option>`).join('');
+      selFiltro.innerHTML = `<option value="TODOS">Todos os Cartões</option>` + ativos.map(c => `<option value="${c.ID_Cartao}">${c.Nome_Cartao}</option>`).join('');
+    }
+
+    function renderizarTabelaComprasCartao() {
+      const mesFiltro = document.getElementById('filtroMes').value;
+      const cartaoFiltro = document.getElementById('filtroCartaoId').value;
+      const tbody = document.getElementById('tabelaComprasCartaoBody');
+
+      const filtradas = estado.cartoes_lancamentos.filter(c => {
+        if (c.Mes_Fatura !== mesFiltro) return false;
+        if (cartaoFiltro !== 'TODOS' && c.ID_Cartao !== cartaoFiltro) return false;
+        return true;
+      });
+
+      if (!filtradas.length) {
+        tbody.innerHTML = `<tr><td colspan="8" class="py-6 text-center text-slate-400">Nenhuma compra lançada para a fatura de ${mesFiltro}.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtradas.map(c => {
+        const cartao = estado.cartoes_config.find(k => k.ID_Cartao === c.ID_Cartao);
+        const nomeCartao = cartao ? cartao.Nome_Cartao : c.ID_Cartao;
+        const isAssinatura = String(c.Assinatura_Fixa).toLowerCase() === 'sim';
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-4">${c.Data_Compra}</td>
+            <td class="py-3 px-4 font-medium">${nomeCartao}</td>
+            <td class="py-3 px-4 font-medium text-slate-800">${c.Descricao}</td>
+            <td class="py-3 px-4">${c.Parcela_Atual}/${c.Total_Parcelas}</td>
+            <td class="py-3 px-4">${isAssinatura ? '<span class="px-2 py-0.5 rounded bg-purple-100 text-purple-700 text-xs font-semibold">Assinatura Fixa</span>' : 'Compra'}</td>
+            <td class="py-3 px-4 font-bold text-rose-600">${formatarMoeda(c.Valor_Parcela)}</td>
+            <td class="py-3 px-4">${c.Status_Fatura}</td>
+            <td class="py-3 px-4 text-right whitespace-nowrap space-x-1">
+              <button onclick="abrirModalEdicaoCompraCartao('${c.ID_Compra}')" title="Editar Compra" class="text-blue-600 hover:bg-blue-50 px-2 py-1 rounded">
+                <i class="fa-solid fa-pen-to-square"></i>
+              </button>
+              <button onclick="excluirCompraCartao('${c.ID_Compra}', '${c.ID_Grupo_Parcela}', ${c.Total_Parcelas}, this)" title="Excluir Compra" class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded">
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ABA 3: CUSTOS FIXOS
+    function renderizarTabelaCustosFixos() {
+      const tbody = document.getElementById('tabelaCustosFixosBody');
+      if (!estado.custos_fixos.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">Nenhum item fixo cadastrado.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = estado.custos_fixos.map(f => `
+        <tr class="hover:bg-slate-50">
+          <td class="py-3 px-4 font-bold">Dia ${f.Dia_Vencimento}</td>
+          <td class="py-3 px-4">${f.Tipo}</td>
+          <td class="py-3 px-4 font-medium text-slate-800">${f.Descricao}</td>
+          <td class="py-3 px-4 text-slate-500">${f.Categoria}</td>
+          <td class="py-3 px-4 font-bold ${f.Tipo === 'Entrada' ? 'text-emerald-600' : 'text-rose-600'}">${formatarMoeda(f.Valor_Base)}</td>
+          <td class="py-3 px-4">${f.Ativo}</td>
+          <td class="py-3 px-4 text-right space-x-1">
+            <button onclick="abrirModalEdicaoFixo('${f.ID_Fixo}')" class="text-blue-600 px-2 py-1"><i class="fa-solid fa-pen-to-square"></i></button>
+            <button onclick="excluirFixo('${f.ID_Fixo}', this)" class="text-slate-400 hover:text-rose-600 px-2 py-1"><i class="fa-solid fa-trash"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // ABA 4: DÍVIDAS E ACORDOS
+    function renderizarTabelaDividas() {
+      const tbody = document.getElementById('tabelaDividasBody');
+      if (!estado.dividas.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">Nenhuma dívida cadastrada. Use os botões acima para cadastrar Dívidas PF ou Instituições.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = estado.dividas.map(d => {
+        const isPF = d.Tipo_Credor === 'Pessoa Física';
+        const emAcordo = d.Em_Acordo === 'Sim';
+        const quitada = d.Status === 'Quitada';
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-4">
+              <div class="font-bold text-slate-800">${d.Credor}</div>
+              <div class="text-xs text-slate-500">${d.Descricao} • <span class="font-semibold ${isPF ? 'text-emerald-700' : 'text-indigo-700'}">${d.Tipo_Credor}</span></div>
+            </td>
+            <td class="py-3 px-4 text-xs">
+              <div>${d.Modalidade}</div>
+              <div class="text-slate-500">Taxa: <strong>${Number(d.Taxa_Juros_Mes).toFixed(2)}% a.m.</strong></div>
+            </td>
+            <td class="py-3 px-4 text-xs">
+              <div>Orig: ${formatarMoeda(d.Valor_Original)}</div>
+              <div class="font-semibold text-slate-700">Atual: ${formatarMoeda(d.Valor_Atualizado)}</div>
+            </td>
+            <td class="py-3 px-4 text-xs">
+              ${emAcordo
+                ? `<div class="font-semibold text-indigo-700">Acordo: ${formatarMoeda(d.Valor_Acordo)} (${d.Parcelas_Pagas}/${d.Qtd_Parcelas}x)</div>
+                   <div class="text-emerald-600 font-medium">Desconto: ${formatarMoeda(d.Desconto_Obtido)}</div>`
+                : `<span class="text-slate-400">Sem acordo fixo (Livre)</span>`}
+            </td>
+            <td class="py-3 px-4">
+              <div class="text-xs text-emerald-600">Pago: ${formatarMoeda(d.Valor_Pago_Total)}</div>
+              <div class="font-bold text-rose-600 text-sm">Falta: ${formatarMoeda(d.Saldo_Restante)}</div>
+            </td>
+            <td class="py-3 px-4">
+              <span class="px-2.5 py-1 rounded-full text-xs font-semibold ${quitada ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">${d.Status}</span>
+            </td>
+            <td class="py-3 px-4 text-right whitespace-nowrap space-x-1">
+              ${!quitada ? `<button onclick="abrirModalAmortizar('${d.ID_Divida}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-medium"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>Amortizar</button>` : ''}
+              <button onclick="abrirModalEdicaoDivida('${d.ID_Divida}')" class="text-blue-600 hover:bg-blue-50 px-2 py-1 rounded"><i class="fa-solid fa-pen-to-square"></i></button>
+              <button onclick="excluirDivida('${d.ID_Divida}', this)" class="text-slate-400 hover:text-rose-600 px-2 py-1 rounded"><i class="fa-solid fa-trash"></i></button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderizarTabelaPagamentosDividas() {
+      const filtro = document.getElementById('filtroParcelasDivida').value;
+      const mesFiltro = document.getElementById('filtroMes').value;
+      const tbody = document.getElementById('tabelaPagamentosDividasBody');
+
+      const filtrados = estado.dividas_pagamentos.filter(p => {
+        if (filtro === 'MES_ATUAL') return String(p.Data_Vencimento || p.Data_Pagamento).startsWith(mesFiltro);
+        if (filtro === 'TODAS_PENDENTES') return p.Status !== 'Pago';
+        if (filtro === 'HISTORICO_PAGO') return p.Status === 'Pago';
+        return true;
+      });
+
+      if (!filtrados.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-6 text-center text-slate-400">Nenhum registro para este filtro.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtrados.map(p => {
+        const div = estado.dividas.find(d => d.ID_Divida === p.ID_Divida);
+        const nomeCredor = div ? `${div.Credor} (${div.Descricao})` : p.ID_Divida;
+        const pago = p.Status === 'Pago';
+
+        const botoesAcao = !pago
+          ? `<button onclick="abrirModalAmortizar('${p.ID_Divida}', '${p.ID_Pagto}', ${p.Valor_Previsto})" class="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded text-xs font-medium"><i class="fa-solid fa-check mr-1"></i>Dar Baixa</button>`
+          : `<button onclick="abrirModalEditarPagtoDivida('${p.ID_Pagto}')" title="Editar Valor ou Data deste Pagamento" class="text-blue-600 hover:bg-blue-50 px-2 py-1 rounded transition"><i class="fa-solid fa-pen-to-square"></i></button>
+             <button onclick="estornarPagtoDivida('${p.ID_Pagto}', '${p.ID_Divida}', this)" title="Estornar Pagamento (Devolver ao Saldo Devedor)" class="text-rose-600 hover:bg-rose-50 px-2 py-1 rounded transition"><i class="fa-solid fa-rotate-left mr-1"></i>Estornar</button>`;
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-2.5 px-3">${pago ? (p.Data_Pagamento || p.Data_Vencimento) : p.Data_Vencimento}</td>
+            <td class="py-2.5 px-3 font-medium text-slate-800">${nomeCredor}</td>
+            <td class="py-2.5 px-3">${p.Observacoes || 'Parcela ' + p.Numero_Parcela}</td>
+            <td class="py-2.5 px-3">${formatarMoeda(p.Valor_Previsto)}</td>
+            <td class="py-2.5 px-3 font-bold text-emerald-600">${formatarMoeda(p.Valor_Pago)}</td>
+            <td class="py-2.5 px-3">
+              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${pago ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${p.Status}</span>
+            </td>
+            <td class="py-2.5 px-3 text-right whitespace-nowrap space-x-1">
+              ${botoesAcao}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // FUNÇÕES DE MODAIS E GRAVAÇÃO (CARTÕES)
+    function abrirModalNovoCartao() {
+      const ativos = (estado.cartoes_config || []).filter(c => String(c.Ativo).toLowerCase() === 'sim');
+      if (ativos.length >= 4) {
+        return alert('Você já possui 4 cartões ativos. Edite, desative ou exclua um cartão existente antes de adicionar outro.');
+      }
+      document.getElementById('formConfigCartao').reset();
+      document.getElementById('cardCfgId').value = '';
+      document.getElementById('cardCfgCor').value = '#4f46e5';
+      document.getElementById('cardCfgAtivo').value = 'Sim';
+      document.getElementById('tituloModalCartao').innerText = 'Adicionar Novo Cartão';
+      document.getElementById('btnExcluirCartaoModal').classList.add('hidden');
+      document.getElementById('modalConfigCartao').classList.remove('hidden');
+    }
+
+    function abrirModalConfigCartao(idCartao) {
+      const c = estado.cartoes_config.find(x => x.ID_Cartao === idCartao);
+      if (!c) return;
+      document.getElementById('cardCfgId').value = c.ID_Cartao;
+      document.getElementById('cardCfgNome').value = c.Nome_Cartao;
+      document.getElementById('cardCfgLimite').value = c.Limite_Total;
+      document.getElementById('cardCfgCor').value = c.Cor_Hex || '#4f46e5';
+      document.getElementById('cardCfgFechamento').value = c.Dia_Fechamento;
+      document.getElementById('cardCfgVencimento').value = c.Dia_Vencimento;
+      document.getElementById('cardCfgAtivo').value = c.Ativo || 'Sim';
+      document.getElementById('tituloModalCartao').innerText = `Configurar: ${c.Nome_Cartao}`;
+      document.getElementById('btnExcluirCartaoModal').classList.remove('hidden');
+      document.getElementById('modalConfigCartao').classList.remove('hidden');
+    }
+
+    async function excluirCartaoAtual(btnEl) {
+      const idCartao = document.getElementById('cardCfgId').value;
+      if (!idCartao) return;
+      if (!confirm('Deseja excluir este cartão da lista? Você poderá adicionar outro cartão sempre que quiser.')) return;
+      const ok = await enviarPost({ acao: 'excluir_cartao', id_cartao: idCartao }, btnEl, 'Excluindo...');
+      if (ok) fecharModal('modalConfigCartao');
+    }
+    
+    async function salvarConfigCartao(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitCfgCartao');
+      const dados = {
+        ID_Cartao: document.getElementById('cardCfgId').value,
+        Nome_Cartao: document.getElementById('cardCfgNome').value,
+        Limite_Total: parseFloat(document.getElementById('cardCfgLimite').value),
+        Cor_Hex: document.getElementById('cardCfgCor').value,
+        Dia_Fechamento: parseInt(document.getElementById('cardCfgFechamento').value),
+        Dia_Vencimento: parseInt(document.getElementById('cardCfgVencimento').value),
+        Ativo: document.getElementById('cardCfgAtivo').value
+      };
+      if (await enviarPost({ acao: 'salvar_config_cartao', dados }, btn)) fecharModal('modalConfigCartao');
+    }
+
+    function abrirModalCompraCartao() {
+      const ativos = (estado.cartoes_config || []).filter(c => String(c.Ativo).toLowerCase() === 'sim');
+      if (!ativos.length) {
+        return alert('Nenhum cartão ativo encontrado. Adicione ou reative um cartão na aba "2. Cartões de Crédito" primeiro.');
+      }
+      document.getElementById('formCompraCartao').reset();
+      document.getElementById('cmpIdCompra').value = '';
+      document.getElementById('cmpIdGrupo').value = '';
+      document.getElementById('cmpData').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('cmpParcelas').value = 1;
+      document.getElementById('cmpParcelas').disabled = false;
+      document.getElementById('lblValorCompraCartao').innerText = 'Valor Total da Compra (R$)';
+      document.getElementById('blocoModoEdicaoCompra').classList.add('hidden');
+      document.getElementById('tituloModalCompraCartao').innerText = 'Lançar Compra no Cartão';
+      document.getElementById('btnSubmitCompraCartao').innerText = 'Lançar na Fatura';
+      document.getElementById('modalCompraCartao').classList.remove('hidden');
+    }
+
+    function abrirModalEdicaoCompraCartao(idCompra) {
+      const item = estado.cartoes_lancamentos.find(c => String(c.ID_Compra) === String(idCompra));
+      if (!item) return alert('Compra não encontrada.');
+
+      const descLimpa = String(item.Descricao || '').replace(/\s*\(\d+\/\d+\)$/, '');
+      const qtdParc = parseInt(item.Total_Parcelas, 10) || 1;
+      const valorParcela = Number(item.Valor_Parcela) || 0;
+      const valorTotalEstimado = Number((valorParcela * qtdParc).toFixed(2));
+
+      document.getElementById('cmpIdCompra').value = item.ID_Compra;
+      document.getElementById('cmpIdGrupo').value = item.ID_Grupo_Parcela;
+      document.getElementById('cmpIdCartao').value = item.ID_Cartao;
+      document.getElementById('cmpData').value = item.Data_Compra;
+      document.getElementById('cmpDescricao').value = descLimpa;
+      document.getElementById('cmpParcelas').value = qtdParc;
+      document.getElementById('cmpCategoria').value = item.Categoria || 'Geral';
+      document.getElementById('cmpAssinatura').value = item.Assinatura_Fixa || 'Não';
+
+      const inputValor = document.getElementById('cmpValorTotal');
+      inputValor.dataset.valorTotal = valorTotalEstimado;
+      inputValor.dataset.valorParcela = valorParcela;
+      inputValor.value = valorTotalEstimado;
+
+      document.getElementById('cmpRecalcularGrupo').checked = true;
+      document.getElementById('blocoModoEdicaoCompra').classList.remove('hidden');
+      alternarLabelEdicaoCompra();
+
+      document.getElementById('tituloModalCompraCartao').innerText = `Editar Compra: ${descLimpa}`;
+      document.getElementById('btnSubmitCompraCartao').innerText = 'Salvar Alterações';
+      document.getElementById('modalCompraCartao').classList.remove('hidden');
+    }
+
+    function alternarLabelEdicaoCompra() {
+      const recalcular = document.getElementById('cmpRecalcularGrupo').checked;
+      const lbl = document.getElementById('lblValorCompraCartao');
+      const inputValor = document.getElementById('cmpValorTotal');
+      const inputParc = document.getElementById('cmpParcelas');
+
+      if (recalcular) {
+        lbl.innerText = 'Valor Total da Compra (R$)';
+        inputValor.value = inputValor.dataset.valorTotal || inputValor.value;
+        inputParc.disabled = false;
+      } else {
+        lbl.innerText = 'Valor Apenas Desta Parcela (R$)';
+        inputValor.value = inputValor.dataset.valorParcela || inputValor.value;
+        inputParc.disabled = true;
+      }
+    }
+
+    async function salvarCompraCartao(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitCompraCartao');
+      const idCompraExistente = document.getElementById('cmpIdCompra').value.trim();
+
+      const dados = {
+        ID_Compra: idCompraExistente || undefined,
+        ID_Grupo_Parcela: document.getElementById('cmpIdGrupo').value.trim() || undefined,
+        Recalcular_Grupo: idCompraExistente ? document.getElementById('cmpRecalcularGrupo').checked : true,
+        ID_Cartao: document.getElementById('cmpIdCartao').value,
+        Data_Compra: document.getElementById('cmpData').value,
+        Descricao: document.getElementById('cmpDescricao').value.trim(),
+        Valor_Total: parseFloat(document.getElementById('cmpValorTotal').value),
+        Total_Parcelas: parseInt(document.getElementById('cmpParcelas').value, 10) || 1,
+        Categoria: document.getElementById('cmpCategoria').value,
+        Assinatura_Fixa: document.getElementById('cmpAssinatura').value
+      };
+
+      const acao = idCompraExistente ? 'editar_compra_cartao' : 'adicionar_compra_cartao';
+      if (await enviarPost({ acao, dados }, btn)) {
+        fecharModal('modalCompraCartao');
+      }
+    }
+
+    async function pagarFatura(idCartao, mesFatura, btnEl) {
+      if (!confirm(`Confirmar o pagamento integral da fatura de ${mesFatura}?`)) return;
+      await enviarPost({ acao: 'pagar_fatura_cartao', id_cartao: idCartao, mes_fatura: mesFatura, status: 'Paga' }, btnEl, 'Pagando...');
+    }
+
+    async function excluirCompraCartao(idCompra, idGrupo, totalParcelas, btnEl) {
+      let excluirTodas = false;
+      if (totalParcelas > 1) {
+        excluirTodas = confirm('Esta compra é parcelada. Clique em OK para excluir TODAS as parcelas deste grupo, ou Cancelar para excluir apenas a parcela deste mês.');
+      } else {
+        if (!confirm('Deseja remover este lançamento da fatura?')) return;
+      }
+      await enviarPost({ acao: 'excluir_compra_cartao', id: idCompra, id_grupo: idGrupo, excluir_todas_parcelas: excluirTodas }, btnEl, '');
+    }
+
+    // DÍVIDAS E AMORTIZAÇÕES
+    function ajustarCamposTipoCredor() {
+      const tipo = document.getElementById('divTipoCredor').value;
+      const bloco = document.getElementById('blocoJurosInstituicao');
+      if (tipo === 'Pessoa Física') {
+        bloco.classList.add('hidden');
+        document.getElementById('divTaxaJuros').value = '0';
+      } else {
+        bloco.classList.remove('hidden');
+        preencherSugestaoJuros();
+      }
+    }
+
+    function preencherSugestaoJuros() {
+      const mod = document.getElementById('divModalidade').value;
+      const taxaSugerida = estado.taxas_padrao[mod];
+      document.getElementById('divTaxaJuros').placeholder = taxaSugerida !== undefined ? `Auto: ${taxaSugerida}% a.m.` : 'Auto (0.90% SELIC)';
+    }
+
+    function ajustarCamposAcordo() {
+      const emAcordo = document.getElementById('divEmAcordo').value === 'Sim';
+      const bloco = document.getElementById('blocoDetalhesAcordo');
+      emAcordo ? bloco.classList.remove('hidden') : bloco.classList.add('hidden');
+    }
+
+    function abrirModalDivida(tipoPadrao) {
+      document.getElementById('formDivida').reset();
+      document.getElementById('divId').value = '';
+      document.getElementById('divTipoCredor').value = tipoPadrao;
+      document.getElementById('divDataInicio').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('divMesInicioAcordo').value = document.getElementById('filtroMes').value;
+      document.getElementById('tituloModalDivida').innerText = `Nova Dívida (${tipoPadrao})`;
+      ajustarCamposTipoCredor();
+      ajustarCamposAcordo();
+      document.getElementById('modalDivida').classList.remove('hidden');
+    }
+
+    function abrirModalEdicaoDivida(idDivida) {
+      const d = estado.dividas.find(x => x.ID_Divida === idDivida);
+      if (!d) return;
+      document.getElementById('divId').value = d.ID_Divida;
+      document.getElementById('divTipoCredor').value = d.Tipo_Credor;
+      document.getElementById('divCredor').value = d.Credor;
+      document.getElementById('divDescricao').value = d.Descricao;
+      document.getElementById('divDataInicio').value = d.Data_Inicio;
+      document.getElementById('divModalidade').value = d.Modalidade;
+      document.getElementById('divTaxaJuros').value = d.Taxa_Juros_Mes;
+      document.getElementById('divValorOriginal').value = d.Valor_Original;
+      document.getElementById('divValorAtualizado').value = d.Valor_Atualizado;
+      document.getElementById('divEmAcordo').value = d.Em_Acordo;
+      document.getElementById('divValorAcordo').value = d.Valor_Acordo;
+      document.getElementById('divQtdParcelas').value = d.Qtd_Parcelas;
+      document.getElementById('divDiaVencAcordo').value = d.Dia_Venc_Acordo || 10;
+      document.getElementById('divPrioridade').value = d.Prioridade || 'Média';
+      document.getElementById('divObservacoes').value = d.Observacoes || '';
+      document.getElementById('tituloModalDivida').innerText = `Editar Dívida: ${d.Credor}`;
+      ajustarCamposTipoCredor();
+      ajustarCamposAcordo();
+      document.getElementById('modalDivida').classList.remove('hidden');
+    }
+
+    async function salvarDivida(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitDivida');
+      const dados = {
+        ID_Divida: document.getElementById('divId').value || undefined,
+        Tipo_Credor: document.getElementById('divTipoCredor').value,
+        Credor: document.getElementById('divCredor').value,
+        Descricao: document.getElementById('divDescricao').value,
+        Data_Inicio: document.getElementById('divDataInicio').value,
+        Modalidade: document.getElementById('divModalidade').value,
+        Taxa_Juros_Mes: document.getElementById('divTaxaJuros').value,
+        Valor_Original: parseFloat(document.getElementById('divValorOriginal').value),
+        Valor_Atualizado: document.getElementById('divValorAtualizado').value ? parseFloat(document.getElementById('divValorAtualizado').value) : 0,
+        Em_Acordo: document.getElementById('divEmAcordo').value,
+        Valor_Acordo: document.getElementById('divValorAcordo').value ? parseFloat(document.getElementById('divValorAcordo').value) : 0,
+        Qtd_Parcelas: parseInt(document.getElementById('divQtdParcelas').value) || 1,
+        Dia_Venc_Acordo: parseInt(document.getElementById('divDiaVencAcordo').value) || 10,
+        Mes_Inicio_Acordo: document.getElementById('divMesInicioAcordo').value,
+        Prioridade: document.getElementById('divPrioridade').value,
+        Observacoes: document.getElementById('divObservacoes').value
+      };
+      if (await enviarPost({ acao: 'salvar_divida', dados }, btn)) fecharModal('modalDivida');
+    }
+
+    function abrirModalAmortizar(idDivida, idPagto = '', valorSugerido = '') {
+      const d = estado.dividas.find(x => x.ID_Divida === idDivida);
+      if (!d) return;
+      const saldo = Number(d.Saldo_Restante) || 0;
+      document.getElementById('formAmortizar').reset();
+      document.getElementById('amortModoEdicao').value = 'NAO';
+      document.getElementById('amortIdDivida').value = d.ID_Divida;
+      document.getElementById('amortIdPagto').value = idPagto;
+      document.getElementById('amortSaldoAtual').value = saldo;
+      document.getElementById('tituloModalAmortizar').innerText = 'Registrar Pagamento / Amortização';
+      document.getElementById('btnSubmitAmort').innerText = 'Confirmar Abatimento';
+      document.getElementById('amortSubtitulo').innerText = `${d.Credor} - ${d.Descricao}`;
+      document.getElementById('amortUiSaldoAtual').innerText = formatarMoeda(saldo);
+      document.getElementById('amortValorPago').value = valorSugerido || '';
+      document.getElementById('amortDataPagto').value = new Date().toISOString().slice(0, 10);
+      atualizarPreviewAmortizacao();
+      document.getElementById('modalAmortizar').classList.remove('hidden');
+    }
+
+    function abrirModalEditarPagtoDivida(idPagto) {
+      const p = estado.dividas_pagamentos.find(x => String(x.ID_Pagto) === String(idPagto));
+      if (!p) return alert('Registro de pagamento não encontrado.');
+      const d = estado.dividas.find(x => String(x.ID_Divida) === String(p.ID_Divida));
+      if (!d) return;
+
+      const saldoRestanteAtual = Number(d.Saldo_Restante) || 0;
+      const valorPagoOriginal = Number(p.Valor_Pago) || 0;
+      const saldoBaseAntesDestePagto = saldoRestanteAtual + valorPagoOriginal;
+
+      document.getElementById('formAmortizar').reset();
+      document.getElementById('amortModoEdicao').value = 'SIM';
+      document.getElementById('amortIdDivida').value = d.ID_Divida;
+      document.getElementById('amortIdPagto').value = p.ID_Pagto;
+      document.getElementById('amortSaldoAtual').value = saldoBaseAntesDestePagto;
+
+      document.getElementById('tituloModalAmortizar').innerText = 'Editar Pagamento Realizado';
+      document.getElementById('btnSubmitAmort').innerText = 'Salvar Correção';
+      document.getElementById('amortSubtitulo').innerText = `${d.Credor} - ${d.Descricao}`;
+      document.getElementById('amortUiSaldoAtual').innerText = formatarMoeda(saldoBaseAntesDestePagto);
+      document.getElementById('amortValorPago').value = valorPagoOriginal;
+      document.getElementById('amortDataPagto').value = p.Data_Pagamento || p.Data_Vencimento || new Date().toISOString().slice(0, 10);
+      document.getElementById('amortObs').value = p.Observacoes || '';
+
+      atualizarPreviewAmortizacao();
+      document.getElementById('modalAmortizar').classList.remove('hidden');
+    }
+
+    function atualizarPreviewAmortizacao() {
+      const saldoAtual = parseFloat(document.getElementById('amortSaldoAtual').value) || 0;
+      const pago = parseFloat(document.getElementById('amortValorPago').value) || 0;
+      const novo = Math.max(0, saldoAtual - pago);
+      document.getElementById('amortUiNovoSaldo').innerText = formatarMoeda(novo);
+    }
+
+    async function salvarAmortizacao(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitAmort');
+      const modoEdicao = document.getElementById('amortModoEdicao').value === 'SIM';
+      const acao = modoEdicao ? 'editar_pagamento_divida' : 'amortizar_divida';
+
+      const ok = await enviarPost({
+        acao: acao,
+        id_divida: document.getElementById('amortIdDivida').value,
+        id_pagto: document.getElementById('amortIdPagto').value || undefined,
+        valor_pago: parseFloat(document.getElementById('amortValorPago').value),
+        data_pagamento: document.getElementById('amortDataPagto').value,
+        status: 'Pago',
+        observacoes: document.getElementById('amortObs').value
+      }, btn, 'Salvando...');
+
+      if (ok) fecharModal('modalAmortizar');
+    }
+
+    async function estornarPagtoDivida(idPagto, idDivida, btnEl) {
+      if (!confirm('Deseja ESTORNAR este pagamento? O valor pago voltará para o saldo devedor da dívida.')) return;
+      await enviarPost({
+        acao: 'estornar_pagamento_divida',
+        id_pagto: idPagto,
+        id_divida: idDivida
+      }, btnEl, 'Estornando...');
+    }
+
+    async function excluirDivida(id, btnEl) {
+      if (!confirm('Excluir esta dívida e todo o seu histórico de parcelas?')) return;
+      await enviarPost({ acao: 'excluir_divida', id }, btnEl, '');
+    }
+
+    // CUSTOS FIXOS E FLUXO DO MÊS
+    function abrirModalCustoFixo() {
+      document.getElementById('formCustoFixo').reset();
+      document.getElementById('fixoId').value = '';
+      document.getElementById('modalCustoFixo').classList.remove('hidden');
+    }
+
+    function abrirModalEdicaoFixo(id) {
+      const f = estado.custos_fixos.find(x => x.ID_Fixo === id);
+      if (!f) return;
+      document.getElementById('fixoId').value = f.ID_Fixo;
+      document.getElementById('fixoTipo').value = f.Tipo;
+      document.getElementById('fixoValor').value = f.Valor_Base;
+      document.getElementById('fixoDescricao').value = f.Descricao;
+      document.getElementById('fixoCategoria').value = f.Categoria;
+      document.getElementById('fixoDia').value = f.Dia_Vencimento;
+      document.getElementById('fixoAtivo').value = f.Ativo;
+      document.getElementById('modalCustoFixo').classList.remove('hidden');
+    }
+
+    async function salvarCustoFixo(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitFixo');
+      const dados = {
+        ID_Fixo: document.getElementById('fixoId').value || undefined,
+        Tipo: document.getElementById('fixoTipo').value,
+        Valor_Base: parseFloat(document.getElementById('fixoValor').value),
+        Descricao: document.getElementById('fixoDescricao').value,
+        Categoria: document.getElementById('fixoCategoria').value,
+        Dia_Vencimento: parseInt(document.getElementById('fixoDia').value),
+        Ativo: document.getElementById('fixoAtivo').value
+      };
+      if (await enviarPost({ acao: 'salvar_custo_fixo', dados }, btn)) fecharModal('modalCustoFixo');
+    }
+
+    async function excluirFixo(id, btnEl) {
+      if (!confirm('Remover este item fixo?')) return;
+      await enviarPost({ acao: 'excluir_custo_fixo', id }, btnEl, '');
+    }
+
+    async function gerarFixosMesAtual(btnEl) {
+      const mesAno = document.getElementById('filtroMes').value;
+      if (!confirm(`Gerar rendas/custos fixos e assinaturas de cartão para ${mesAno}?`)) return;
+      await enviarPost({ acao: 'gerar_fixos_mes', mes_ano: mesAno }, btnEl, 'Gerando...');
+    }
+
+    function abrirModalFluxoMes() {
+      document.getElementById('formFluxoMes').reset();
+      document.getElementById('flxId').value = '';
+      document.getElementById('flxVencimento').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('modalFluxoMes').classList.remove('hidden');
+    }
+
+    function abrirModalEdicaoFluxo(id) {
+      const f = estado.fluxo_mes.find(x => x.ID === id);
+      if (!f) return;
+      document.getElementById('flxId').value = f.ID;
+      document.getElementById('flxTipo').value = f.Tipo;
+      document.getElementById('flxValor').value = f.Valor;
+      document.getElementById('flxDescricao').value = f.Descricao;
+      document.getElementById('flxVencimento').value = f.Data_Vencimento;
+      document.getElementById('flxCategoria').value = f.Categoria;
+      document.getElementById('flxStatus').value = f.Status;
+      document.getElementById('modalFluxoMes').classList.remove('hidden');
+    }
+
+    async function salvarFluxoMes(e) {
+      e.preventDefault();
+      const btn = document.getElementById('btnSubmitFlx');
+      const dados = {
+        ID: document.getElementById('flxId').value || undefined,
+        Tipo: document.getElementById('flxTipo').value,
+        Valor: parseFloat(document.getElementById('flxValor').value),
+        Descricao: document.getElementById('flxDescricao').value,
+        Data_Vencimento: document.getElementById('flxVencimento').value,
+        Categoria: document.getElementById('flxCategoria').value,
+        Status: document.getElementById('flxStatus').value
+      };
+      if (await enviarPost({ acao: 'salvar_fluxo_mes', dados }, btn)) fecharModal('modalFluxoMes');
+    }
+
+    async function baixarFluxo(id, btnEl) {
+      await enviarPost({ acao: 'baixar_fluxo_mes', id }, btnEl, '...');
+    }
+
+    async function excluirFluxo(id, btnEl) {
+      if (!confirm('Excluir este lançamento do mês?')) return;
+      await enviarPost({ acao: 'excluir_fluxo_mes', id }, btnEl, '');
+    }
+
+    // ================= REGISTRO PWA & BOTÃO DE INSTALAÇÃO =================
+    let eventoInstalacaoPWA = null;
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW falhou:', err));
+      });
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      eventoInstalacaoPWA = e;
+      const btn = document.getElementById('btnInstalarPWA');
+      if (btn) btn.classList.remove('hidden');
+    });
+
+    async function instalarPWA() {
+      if (!eventoInstalacaoPWA) return;
+      eventoInstalacaoPWA.prompt();
+      const { outcome } = await eventoInstalacaoPWA.userChoice;
+      if (outcome === 'accepted') {
+        document.getElementById('btnInstalarPWA').classList.add('hidden');
+      }
+      eventoInstalacaoPWA = null;
+    }
+
+    window.addEventListener('appinstalled', () => {
+      const btn = document.getElementById('btnInstalarPWA');
+      if (btn) btn.classList.add('hidden');
+    });
+  </script>
+</body>
+</html>

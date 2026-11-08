@@ -1,6 +1,6 @@
 # 🏦 Suite de Gestão Financeira Serverless PWA (PJ & PF) — Repositório Matriz
 
-Repositório matriz contendo dois sistemas independentes de gestão financeira construídos sobre a arquitetura simple e gratuita **Google Sheets (Database) + Google Apps Script (Serverless API) + GitHub Pages (Frontend SPA / PWA)**.
+Repositório matriz contendo dois sistemas independentes de gestão financeira construídos sobre a arquitetura simples **100% gratuita (Serverless)** baseado em **Google Sheets (Database) + Google Apps Script (Serverless API) + GitHub Pages (Frontend SPA / PWA)**.
 
 Ambos os projetos foram desenhados no padrão **White-Label**: nenhuma URL de planilha, ID de documento ou credencial fica exposta ou fixa no código-fonte. Isso permite instanciar qualquer um dos sistemas em novas contas Google em menos de 5 minutos, além de instalá-los como aplicativos nativos no Android, iOS e Desktop.
 

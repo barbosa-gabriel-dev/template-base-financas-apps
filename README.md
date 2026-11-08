@@ -1,8 +1,8 @@
 # 🏦 Suite de Gestão Financeira Serverless PWA (PJ & PF) — Repositório Matriz
 
-Repositório matriz (*Template Base*) contendo dois sistemas independentes de gestão financeira construídos sobre a arquitetura **Google Sheets (Database) + Google Apps Script (Serverless API) + GitHub Pages (Frontend SPA / PWA)**.
+Repositório matriz contendo dois sistemas independentes de gestão financeira construídos sobre a arquitetura simple e gratuita **Google Sheets (Database) + Google Apps Script (Serverless API) + GitHub Pages (Frontend SPA / PWA)**.
 
-Ambos os projetos foram desenhados no padrão **White-Label (Zero Hardcoding)**: nenhuma URL de planilha, ID de documento ou credencial fica exposta ou fixa no código-fonte. Isso permite instanciar qualquer um dos sistemas em novas contas Google em menos de 5 minutos, além de instalá-los como aplicativos nativos no Android, iOS e Desktop.
+Ambos os projetos foram desenhados no padrão **White-Label**: nenhuma URL de planilha, ID de documento ou credencial fica exposta ou fixa no código-fonte. Isso permite instanciar qualquer um dos sistemas em novas contas Google em menos de 5 minutos, além de instalá-los como aplicativos nativos no Android, iOS e Desktop.
 
 ---
 
@@ -13,14 +13,14 @@ template-base-financas/
 │
 ├── README.md                 # Documentação Matriz e Checklist de Implantação
 │
-├── sistema-pj/               # Base completa do Sistema Empresarial (PJ)
+├── gestao-PJ-app/            # Base completa do Sistema Empresarial (PJ)
 │   ├── index.html            # Frontend SPA PJ com suporte PWA e Modal de Abatimento
 │   ├── manifest.json         # Manifesto PWA PJ (Ícone vetorial embutido + Tema #0f172a)
 │   ├── sw.js                 # Service Worker PJ (Cache de UI + Bypass para API Sheets)
 │   ├── Codigo.gs             # Backend Apps Script PJ (Auto-Setup + API + Backup Drive)
 │   └── README.md             # Documentação específica do módulo PJ
 │
-└── sistema-pf/               # Base completa do Sistema Pessoal & Dívidas (PF)
+└── financas-PF-app/          # Base completa do Sistema Pessoal & Dívidas (PF)
     ├── index.html            # Frontend SPA PF (4 Cartões + Quitação + Estorno + PWA)
     ├── manifest.json         # Manifesto PWA PF (Ícone vetorial embutido + Tema #1e1b4b)
     ├── sw.js                 # Service Worker PF (Cache de UI + Bypass para API Sheets)
@@ -34,8 +34,8 @@ template-base-financas/
 
 | Diretório | Sistema | Escopo e Regras de Negócio | Identidade Visual | Chaves `localStorage` |
 | :--- | :--- | :--- | :--- | :--- |
-| 📁 [`/sistema-pj`](./sistema-pj) | **Gestão Financeira PJ** | Fluxo de Caixa, Contas a Pagar/Receber, Abatimento visual de adiantamentos em parcelas, Custos Fixos Operacionais e Plano de Contas DRE com atualização em cascata. | Slate / Azul Executivo (`#0f172a`) | `fin_pj_api_url` <br> `fin_pj_api_token` |
-| 📁 [`/sistema-pf`](./sistema-pf) | **Controle & Quitação PF** | Mapa de Dívidas (PF 0% juros livre e Instituições com juros automáticos SELIC/Mercado), Acordos, Estorno de Amortizações, Controle de até 4 Cartões de Crédito (parcelamentos/assinaturas) e Orçamento Mensal. | Indigo / Violeta (`#1e1b4b`) | `fin_pf_api_url` <br> `fin_pf_api_token` |
+| 📁 [`/gestao-PJ-app`](./gestao-PJ-app) | **Gestão Financeira PJ** | Fluxo de Caixa, Contas a Pagar/Receber, Abatimento visual de adiantamentos em parcelas, Custos Fixos Operacionais e Plano de Contas DRE com atualização em cascata. | Slate / Azul Executivo (`#0f172a`) | `fin_pj_api_url` <br> `fin_pj_api_token` |
+| 📁 [`/financas-PF-app`](./financas-PF-app) | **Controle & Quitação PF** | Mapa de Dívidas (PF 0% juros livre e Instituições com juros automáticos SELIC/Mercado), Acordos, Estorno de Amortizações, Controle de até 4 Cartões de Crédito (parcelamentos/assinaturas) e Orçamento Mensal. | Indigo / Violeta (`#1e1b4b`) | `fin_pf_api_url` <br> `fin_pf_api_token` |
 
 > 💡 **Isolamento Total de Sessão e Cache:** Como os sistemas utilizam chaves distintas no `localStorage` e nomes de cache separados nos respectivos *Service Workers* (`fin-pj-pwa-v1` e `fin-pf-pwa-v1`), ambos podem ser instalados e operados simultaneamente no mesmo smartphone ou computador, cada um conectado à sua respectiva conta Google.
 
